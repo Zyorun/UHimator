@@ -48,7 +48,7 @@ jobs:
 
 
     # ==========================================
-    # INSTALL TOOLS
+    # INSTALL BUILD TOOLS
     # ==========================================
     - name: Install tools
       shell: powershell
@@ -63,9 +63,64 @@ jobs:
           -y
 
 
+        Write-Host "Installing xz..."
+
+
+        Invoke-WebRequest `
+          -Uri "https://github.com/madler/xz/releases/download/v5.8.1/xz-5.8.1-windows-x86_64.zip" `
+          -OutFile "xz.zip"
+
+
+        Expand-Archive `
+          xz.zip `
+          -DestinationPath "C:\xz" `
+          -Force
+
+
+        Get-ChildItem `
+          C:\xz `
+          -Recurse
+
+
 
     # ==========================================
-    # PREPARE WINDOWS DEPENDENCIES
+    # ADD XZ TO PATH
+    # ==========================================
+    - name: Setup xz path
+      shell: powershell
+      run: |
+
+        $xz = Get-ChildItem `
+          C:\xz `
+          -Recurse `
+          -Filter xz.exe `
+          | Select-Object -First 1
+
+
+        if ($null -eq $xz) {
+
+          Write-Error "xz.exe not found"
+
+          exit 1
+
+        }
+
+
+        Write-Host "Found xz:"
+        Write-Host $xz.FullName
+
+
+        echo $xz.Directory.FullName | Out-File `
+          -FilePath $env:GITHUB_PATH `
+          -Append
+
+
+        & $xz.FullName --version
+
+
+
+    # ==========================================
+    # PREPARE DEPENDENCIES
     # ==========================================
     - name: Build dependencies
       shell: powershell
@@ -81,29 +136,8 @@ jobs:
         Write-Host $DevDir
 
 
-        if (Test-Path ".\Prepare-WindowsDependencies.ps1") {
 
-
-          powershell `
-            -ExecutionPolicy Bypass `
-            -File ".\Prepare-WindowsDependencies.ps1" `
-            -DevDir "$DevDir"
-
-
-        }
-
-        elseif (Test-Path ".\scripts\Prepare-WindowsDependencies.ps1") {
-
-
-          powershell `
-            -ExecutionPolicy Bypass `
-            -File ".\scripts\Prepare-WindowsDependencies.ps1" `
-            -DevDir "$DevDir"
-
-
-        }
-
-        else {
+        if (!(Test-Path ".\Prepare-WindowsDependencies.ps1")) {
 
           Write-Error "Prepare-WindowsDependencies.ps1 not found"
 
@@ -113,14 +147,21 @@ jobs:
 
 
 
+        powershell `
+          -ExecutionPolicy Bypass `
+          -File ".\Prepare-WindowsDependencies.ps1" `
+          -DevDir "$DevDir"
+
+
+
     # ==========================================
-    # FIND BUILD SCRIPT
+    # FIND BUILD FILE
     # ==========================================
     - name: Find build script
       shell: powershell
       run: |
 
-        Write-Host "Searching build files..."
+        Write-Host "Searching build scripts..."
 
 
         Get-ChildItem `
@@ -128,7 +169,7 @@ jobs:
           -File `
           | Where-Object {
 
-            $_.Name -match "build|compile|make"
+              $_.Name -match "build|compile|make"
 
           } `
           | Select FullName
@@ -174,10 +215,7 @@ jobs:
         else {
 
 
-          Write-Host "No build script detected"
-
-
-          Write-Host "Available scripts:"
+          Write-Host "No build script found"
 
 
           Get-ChildItem `
@@ -185,9 +223,9 @@ jobs:
             -File `
             | Where-Object {
 
-              $_.Extension -eq ".ps1" `
-              -or $_.Extension -eq ".bat" `
-              -or $_.Extension -eq ".cmd"
+                $_.Extension -eq ".ps1" `
+                -or $_.Extension -eq ".bat" `
+                -or $_.Extension -eq ".cmd"
 
             } `
             | Select FullName
@@ -195,13 +233,12 @@ jobs:
 
           exit 1
 
-
         }
 
 
 
     # ==========================================
-    # COLLECT RESULT
+    # COLLECT OUTPUT
     # ==========================================
     - name: Collect executable
       shell: powershell
