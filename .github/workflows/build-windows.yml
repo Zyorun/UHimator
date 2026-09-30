@@ -30,7 +30,7 @@ jobs:
 
 
     # ==========================================
-    # CHECKOUT SOURCE
+    # CHECKOUT
     # ==========================================
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
 
 
     # ==========================================
-    # SETUP VISUAL STUDIO
+    # VISUAL STUDIO
     # ==========================================
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
@@ -64,48 +64,14 @@ jobs:
           -y
 
 
-        Write-Host "Searching xz.exe..."
+        C:\tools\msys64\usr\bin\bash.exe -lc `
+        "pacman -Sy --noconfirm xz"
 
 
-        $xz = Get-ChildItem `
-          "C:\tools\msys64" `
-          -Recurse `
-          -Filter "xz.exe" `
-          -ErrorAction SilentlyContinue `
-          | Select-Object -First 1
-
-
-
-        if ($null -eq $xz) {
-
-          Write-Error "xz.exe not found"
-
-          exit 1
-
-        }
-
-
-
-        Write-Host "xz found:"
-        Write-Host $xz.FullName
-
-
-
-        echo $xz.Directory.FullName | Out-File `
+        echo "C:\tools\msys64\usr\bin" | Out-File `
           -FilePath $env:GITHUB_PATH `
           -Append
 
-
-
-        Write-Host "Checking installed tools..."
-
-        git --version
-
-        cmake --version
-
-        ninja --version
-
-        7z
 
         xz --version
 
@@ -124,20 +90,8 @@ jobs:
         $DevDir = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
 
 
-
         Write-Host "Developer directory:"
         Write-Host $DevDir
-
-
-
-        if (!(Test-Path ".\Prepare-WindowsDependencies.ps1")) {
-
-          Write-Error "Prepare-WindowsDependencies.ps1 not found"
-
-          exit 1
-
-        }
-
 
 
         powershell `
@@ -154,9 +108,6 @@ jobs:
       shell: powershell
       run: |
 
-        Write-Host "Searching build scripts..."
-
-
         Get-ChildItem `
           -Recurse `
           -File `
@@ -165,7 +116,7 @@ jobs:
               $_.Name -match "build|compile|make"
 
           } `
-          | Select-Object FullName
+          | Select FullName
 
 
 
@@ -176,53 +127,31 @@ jobs:
       shell: powershell
       run: |
 
-
         if (Test-Path ".\Build-Windows.ps1") {
-
 
           powershell `
             -ExecutionPolicy Bypass `
             -File ".\Build-Windows.ps1"
 
-
         }
 
         elseif (Test-Path ".\build.ps1") {
-
 
           powershell `
             -ExecutionPolicy Bypass `
             -File ".\build.ps1"
 
-
         }
 
         elseif (Test-Path ".\build.bat") {
 
-
           cmd /c build.bat
-
 
         }
 
         else {
 
-
-          Write-Host "Build script not found"
-
-
-          Get-ChildItem `
-            -Recurse `
-            -File `
-            | Where-Object {
-
-                $_.Extension -eq ".ps1" `
-                -or $_.Extension -eq ".bat" `
-                -or $_.Extension -eq ".cmd"
-
-            } `
-            | Select-Object FullName
-
+          Write-Error "Build script not found"
 
           exit 1
 
@@ -237,10 +166,7 @@ jobs:
       shell: powershell
       run: |
 
-        New-Item `
-          -ItemType Directory `
-          -Force `
-          -Path release
+        mkdir release
 
 
         Get-ChildItem `
@@ -254,7 +180,7 @@ jobs:
 
 
     # ==========================================
-    # UPLOAD ARTIFACT
+    # UPLOAD
     # ==========================================
     - name: Upload artifact
       uses: actions/upload-artifact@v4
