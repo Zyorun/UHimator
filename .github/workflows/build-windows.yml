@@ -12,6 +12,9 @@ on:
   workflow_dispatch:
 
 
+# ==========================================
+# BUILD JOB
+# ==========================================
 jobs:
 
   build-windows:
@@ -27,9 +30,9 @@ jobs:
 
 
     # ==========================================
-    # CHECKOUT
+    # CHECKOUT SOURCE
     # ==========================================
-    - name: Checkout source
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -45,7 +48,7 @@ jobs:
 
 
     # ==========================================
-    # INSTALL REQUIREMENTS
+    # INSTALL TOOLS
     # ==========================================
     - name: Install tools
       shell: powershell
@@ -62,20 +65,70 @@ jobs:
 
 
     # ==========================================
-    # FIND BUILD SCRIPT
+    # PREPARE WINDOWS DEPENDENCIES
     # ==========================================
-    - name: Find build scripts
+    - name: Build dependencies
       shell: powershell
       run: |
 
-        Write-Host "Searching scripts..."
+        Write-Host "Preparing dependencies..."
+
+
+        $DevDir = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
+
+
+        Write-Host "Developer directory:"
+        Write-Host $DevDir
+
+
+        if (Test-Path ".\Prepare-WindowsDependencies.ps1") {
+
+
+          powershell `
+            -ExecutionPolicy Bypass `
+            -File ".\Prepare-WindowsDependencies.ps1" `
+            -DevDir "$DevDir"
+
+
+        }
+
+        elseif (Test-Path ".\scripts\Prepare-WindowsDependencies.ps1") {
+
+
+          powershell `
+            -ExecutionPolicy Bypass `
+            -File ".\scripts\Prepare-WindowsDependencies.ps1" `
+            -DevDir "$DevDir"
+
+
+        }
+
+        else {
+
+          Write-Error "Prepare-WindowsDependencies.ps1 not found"
+
+          exit 1
+
+        }
+
+
+
+    # ==========================================
+    # FIND BUILD SCRIPT
+    # ==========================================
+    - name: Find build script
+      shell: powershell
+      run: |
+
+        Write-Host "Searching build files..."
+
 
         Get-ChildItem `
           -Recurse `
           -File `
           | Where-Object {
 
-              $_.Name -match "build|compile|prepare|dependencies"
+            $_.Name -match "build|compile|make"
 
           } `
           | Select FullName
@@ -83,86 +136,61 @@ jobs:
 
 
     # ==========================================
-    # BUILD DEPENDENCIES
-    # ==========================================
-    - name: Build dependencies
-      shell: powershell
-      run: |
-
-        if (Test-Path ".\scripts\Prepare-WindowsDependencies.ps1") {
-
-          Write-Host "Running dependency script"
-
-          powershell `
-          -ExecutionPolicy Bypass `
-          -File ".\scripts\Prepare-WindowsDependencies.ps1"
-
-        }
-
-        elseif (Test-Path ".\Prepare-WindowsDependencies.ps1") {
-
-          Write-Host "Running dependency script"
-
-          powershell `
-          -ExecutionPolicy Bypass `
-          -File ".\Prepare-WindowsDependencies.ps1"
-
-        }
-
-        else {
-
-          Write-Host "No dependency script found"
-
-        }
-
-
-
-    # ==========================================
-    # BUILD PROJECT
+    # BUILD UHIMATOR
     # ==========================================
     - name: Build UHimator
       shell: powershell
       run: |
 
 
-        if (Test-Path ".\scripts\build-windows.ps1") {
+        if (Test-Path ".\Build-Windows.ps1") {
 
 
           powershell `
-          -ExecutionPolicy Bypass `
-          -File ".\scripts\build-windows.ps1"
+            -ExecutionPolicy Bypass `
+            -File ".\Build-Windows.ps1"
 
 
         }
 
-
-        elseif (Test-Path ".\build-windows.ps1") {
+        elseif (Test-Path ".\build.ps1") {
 
 
           powershell `
-          -ExecutionPolicy Bypass `
-          -File ".\build-windows.ps1"
+            -ExecutionPolicy Bypass `
+            -File ".\build.ps1"
 
 
         }
 
+        elseif (Test-Path ".\build.bat") {
+
+
+          cmd /c build.bat
+
+
+        }
 
         else {
 
 
-          Write-Host "Searching executable build file"
+          Write-Host "No build script detected"
+
+
+          Write-Host "Available scripts:"
 
 
           Get-ChildItem `
-          -Recurse `
-          -File `
-          | Where-Object {
+            -Recurse `
+            -File `
+            | Where-Object {
 
-              $_.Extension -eq ".bat" `
-              -or $_.Extension -eq ".cmd" `
-              -or $_.Extension -eq ".ps1"
+              $_.Extension -eq ".ps1" `
+              -or $_.Extension -eq ".bat" `
+              -or $_.Extension -eq ".cmd"
 
-          }
+            } `
+            | Select FullName
 
 
           exit 1
@@ -173,7 +201,7 @@ jobs:
 
 
     # ==========================================
-    # COLLECT OUTPUT
+    # COLLECT RESULT
     # ==========================================
     - name: Collect executable
       shell: powershell
@@ -193,7 +221,7 @@ jobs:
 
 
     # ==========================================
-    # UPLOAD
+    # UPLOAD ARTIFACT
     # ==========================================
     - name: Upload artifact
       uses: actions/upload-artifact@v4
