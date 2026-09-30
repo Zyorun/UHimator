@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "source_root": "Mine-imator-Custom-HCL",
+  "archive_bytes": 47956993,
+  "archive_sha256": "82b13000c6f6ed20a6244606a36ec4e85668dedaff792b9434efc99bd549431a",
+  "parts": [
+    {
+      "name": "mineimator-source.zip.001",
+      "bytes": 20971520,
+      "sha256": "99fd1b4425a53a2a7fd4a0985a36edcecc1816ae3e01792e515e065be88c4515"
+    },
+    {
+      "name": "mineimator-source.zip.002",
+      "bytes": 20971520,
+      "sha256": "c508233f48413b39b07b2a96b6c7bc5524be80b62b7c2472b233ac11580c1d50"
+    },
+    {
+      "name": "mineimator-source.zip.003",
+      "bytes": 6013953,
+      "sha256": "263eb3f528ae8e5d0cc4839ad593671356b764ac61f36e387dac17eb8f078337"
+    }
+  ]
+}
