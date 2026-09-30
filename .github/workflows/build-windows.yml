@@ -8,7 +8,9 @@ on:
     branches:
       - main
       - master
+
   pull_request:
+
   workflow_dispatch:
 
 
@@ -55,78 +57,16 @@ jobs:
       run: |
 
         choco install `
-          cmake `
-          ninja `
           7zip `
           python `
+          ninja `
+          cmake `
           -y
 
 
-    # ==========================================
-    # CHECK PROJECT FILE
-    # ==========================================
-    - name: Detect project
-      shell: powershell
-      run: |
-
-        Write-Host "Searching project files..."
-
-        Get-ChildItem -Recurse -Name *.pro
-
-        Get-ChildItem -Recurse -Name CMakeLists.txt
-
-
 
     # ==========================================
-    # DOWNLOAD DEPENDENCIES
-    # ==========================================
-    - name: Download dependencies
-      shell: powershell
-      timeout-minutes: 30
-      run: |
-
-        $ErrorActionPreference="Stop"
-
-
-        if (!(Test-Path deps)) {
-            mkdir deps
-        }
-
-
-        cd deps
-
-
-        if (!(Test-Path libzip-1.9.2.tar.xz)) {
-
-          Write-Host "Downloading libzip..."
-
-          Invoke-WebRequest `
-          -Uri "https://libzip.org/download/libzip-1.9.2.tar.xz" `
-          -OutFile "libzip-1.9.2.tar.xz" `
-          -TimeoutSec 180
-
-        }
-
-
-
-    # ==========================================
-    # EXTRACT LIBZIP
-    # ==========================================
-    - name: Extract dependencies
-      shell: powershell
-      run: |
-
-        cd deps
-
-
-        7z x libzip-1.9.2.tar.xz -y
-
-        7z x libzip-1.9.2.tar -y
-
-
-
-    # ==========================================
-    # SETUP QT
+    # INSTALL QT
     # ==========================================
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
@@ -141,58 +81,176 @@ jobs:
 
 
     # ==========================================
-    # BUILD QT PROJECT
+    # CHECK PROJECT STRUCTURE
     # ==========================================
-    - name: Build UHimator
+    - name: Detect project files
       shell: powershell
       run: |
 
-        Write-Host "Finding .pro file..."
-
-        $project = Get-ChildItem `
-        -Recurse `
-        -Filter *.pro |
-        Select-Object -First 1
+        Write-Host "=================================="
+        Write-Host "Current Directory"
+        Write-Host "=================================="
 
 
-        if ($null -eq $project) {
+        pwd
 
-          Write-Error "No Qt project (.pro) found"
+
+        Write-Host ""
+        Write-Host "=================================="
+        Write-Host "Searching project files"
+        Write-Host "=================================="
+
+
+        $files = Get-ChildItem `
+          -Path . `
+          -Recurse `
+          -File `
+          -ErrorAction SilentlyContinue `
+          | Where-Object {
+
+              $_.Name -eq "CMakeLists.txt" `
+              -or $_.Extension -eq ".pro" `
+              -or $_.Extension -eq ".pri"
+
+          }
+
+
+        if ($files.Count -eq 0) {
+
+          Write-Error "No project file found"
 
           exit 1
 
         }
 
 
-        Write-Host "Building:"
-        Write-Host $project.FullName
+        foreach ($file in $files) {
 
+          Write-Host $file.FullName
 
-        cd $project.Directory
-
-
-        qmake $project.Name
-
-
-        nmake
+        }
 
 
 
     # ==========================================
-    # PACKAGE
+    # BUILD PROJECT
     # ==========================================
-    - name: Package build
+    - name: Build UHimator
       shell: powershell
       run: |
+
+
+        Write-Host "Searching Qt project..."
+
+
+        $pro = Get-ChildItem `
+          -Path . `
+          -Recurse `
+          -File `
+          -Filter *.pro `
+          -ErrorAction SilentlyContinue `
+          | Select-Object -First 1
+
+
+
+        if ($null -ne $pro) {
+
+
+          Write-Host "=================================="
+
+          Write-Host "Qt project detected"
+
+          Write-Host $pro.FullName
+
+          Write-Host "=================================="
+
+
+          cd $pro.Directory.FullName
+
+
+          qmake $pro.Name
+
+
+          nmake
+
+
+        }
+
+        else {
+
+
+          Write-Host "No Qt project found"
+
+          Write-Host "Searching CMake project..."
+
+
+          $cmake = Get-ChildItem `
+            -Path . `
+            -Recurse `
+            -File `
+            -Filter CMakeLists.txt `
+            -ErrorAction SilentlyContinue `
+            | Select-Object -First 1
+
+
+
+          if ($null -eq $cmake) {
+
+
+            Write-Error "No CMakeLists.txt or .pro found"
+
+
+            exit 1
+
+
+          }
+
+
+
+          Write-Host "CMake project detected"
+
+          Write-Host $cmake.FullName
+
+
+
+          mkdir build
+
+
+          cd build
+
+
+          cmake $cmake.Directory.FullName `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release
+
+
+
+          ninja -v
+
+
+        }
+
+
+
+    # ==========================================
+    # COLLECT EXE
+    # ==========================================
+    - name: Collect build files
+      shell: powershell
+      run: |
+
 
         mkdir release
 
 
-        Get-ChildItem -Recurse `
-        -Include *.exe |
-        Copy-Item `
-        -Destination release `
-        -Force
+        Get-ChildItem `
+          -Path . `
+          -Recurse `
+          -Include *.exe `
+          -File `
+          | Copy-Item `
+          -Destination release `
+          -Force
 
 
 
