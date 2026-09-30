@@ -9,14 +9,9 @@ on:
       - main
       - master
 
-  pull_request:
-
   workflow_dispatch:
 
 
-# ==========================================
-# BUILD JOB
-# ==========================================
 jobs:
 
   build-windows:
@@ -25,16 +20,16 @@ jobs:
 
     runs-on: windows-2022
 
-    timeout-minutes: 180
+    timeout-minutes: 240
 
 
     steps:
 
 
     # ==========================================
-    # CHECKOUT SOURCE
+    # CHECKOUT
     # ==========================================
-    - name: Checkout repository
+    - name: Checkout source
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -50,83 +45,73 @@ jobs:
 
 
     # ==========================================
-    # INSTALL TOOLS
+    # INSTALL REQUIREMENTS
     # ==========================================
     - name: Install tools
       shell: powershell
       run: |
 
         choco install `
-          7zip `
+          git `
           python `
-          ninja `
           cmake `
+          ninja `
+          7zip `
           -y
 
 
 
     # ==========================================
-    # INSTALL QT
+    # FIND BUILD SCRIPT
     # ==========================================
-    - name: Install Qt
-      uses: jurplel/install-qt-action@v4
-      with:
-
-        version: 5.15.2
-
-        arch: win64_msvc2019_64
-
-        cache: true
-
-
-
-    # ==========================================
-    # CHECK PROJECT STRUCTURE
-    # ==========================================
-    - name: Detect project files
+    - name: Find build scripts
       shell: powershell
       run: |
 
-        Write-Host "=================================="
-        Write-Host "Current Directory"
-        Write-Host "=================================="
+        Write-Host "Searching scripts..."
 
-
-        pwd
-
-
-        Write-Host ""
-        Write-Host "=================================="
-        Write-Host "Searching project files"
-        Write-Host "=================================="
-
-
-        $files = Get-ChildItem `
-          -Path . `
+        Get-ChildItem `
           -Recurse `
           -File `
-          -ErrorAction SilentlyContinue `
           | Where-Object {
 
-              $_.Name -eq "CMakeLists.txt" `
-              -or $_.Extension -eq ".pro" `
-              -or $_.Extension -eq ".pri"
+              $_.Name -match "build|compile|prepare|dependencies"
 
-          }
+          } `
+          | Select FullName
 
 
-        if ($files.Count -eq 0) {
 
-          Write-Error "No project file found"
+    # ==========================================
+    # BUILD DEPENDENCIES
+    # ==========================================
+    - name: Build dependencies
+      shell: powershell
+      run: |
 
-          exit 1
+        if (Test-Path ".\scripts\Prepare-WindowsDependencies.ps1") {
+
+          Write-Host "Running dependency script"
+
+          powershell `
+          -ExecutionPolicy Bypass `
+          -File ".\scripts\Prepare-WindowsDependencies.ps1"
 
         }
 
+        elseif (Test-Path ".\Prepare-WindowsDependencies.ps1") {
 
-        foreach ($file in $files) {
+          Write-Host "Running dependency script"
 
-          Write-Host $file.FullName
+          powershell `
+          -ExecutionPolicy Bypass `
+          -File ".\Prepare-WindowsDependencies.ps1"
+
+        }
+
+        else {
+
+          Write-Host "No dependency script found"
 
         }
 
@@ -140,92 +125,47 @@ jobs:
       run: |
 
 
-        Write-Host "Searching Qt project..."
+        if (Test-Path ".\scripts\build-windows.ps1") {
 
 
-        $pro = Get-ChildItem `
-          -Path . `
-          -Recurse `
-          -File `
-          -Filter *.pro `
-          -ErrorAction SilentlyContinue `
-          | Select-Object -First 1
-
-
-
-        if ($null -ne $pro) {
-
-
-          Write-Host "=================================="
-
-          Write-Host "Qt project detected"
-
-          Write-Host $pro.FullName
-
-          Write-Host "=================================="
-
-
-          cd $pro.Directory.FullName
-
-
-          qmake $pro.Name
-
-
-          nmake
+          powershell `
+          -ExecutionPolicy Bypass `
+          -File ".\scripts\build-windows.ps1"
 
 
         }
+
+
+        elseif (Test-Path ".\build-windows.ps1") {
+
+
+          powershell `
+          -ExecutionPolicy Bypass `
+          -File ".\build-windows.ps1"
+
+
+        }
+
 
         else {
 
 
-          Write-Host "No Qt project found"
-
-          Write-Host "Searching CMake project..."
+          Write-Host "Searching executable build file"
 
 
-          $cmake = Get-ChildItem `
-            -Path . `
-            -Recurse `
-            -File `
-            -Filter CMakeLists.txt `
-            -ErrorAction SilentlyContinue `
-            | Select-Object -First 1
+          Get-ChildItem `
+          -Recurse `
+          -File `
+          | Where-Object {
 
-
-
-          if ($null -eq $cmake) {
-
-
-            Write-Error "No CMakeLists.txt or .pro found"
-
-
-            exit 1
-
+              $_.Extension -eq ".bat" `
+              -or $_.Extension -eq ".cmd" `
+              -or $_.Extension -eq ".ps1"
 
           }
 
 
-
-          Write-Host "CMake project detected"
-
-          Write-Host $cmake.FullName
-
-
-
-          mkdir build
-
-
-          cd build
-
-
-          cmake $cmake.Directory.FullName `
-            -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release
-
-
-
-          ninja -v
+          exit 1
 
 
         }
@@ -233,18 +173,16 @@ jobs:
 
 
     # ==========================================
-    # COLLECT EXE
+    # COLLECT OUTPUT
     # ==========================================
-    - name: Collect build files
+    - name: Collect executable
       shell: powershell
       run: |
-
 
         mkdir release
 
 
         Get-ChildItem `
-          -Path . `
           -Recurse `
           -Include *.exe `
           -File `
@@ -255,7 +193,7 @@ jobs:
 
 
     # ==========================================
-    # UPLOAD RESULT
+    # UPLOAD
     # ==========================================
     - name: Upload artifact
       uses: actions/upload-artifact@v4
