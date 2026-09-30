@@ -95,6 +95,24 @@ jobs:
           [System.IO.File]::WriteAllText((Join-Path $Dir 'ffversion.h'), $FfVersion, $Utf8)
           Get-Content -LiteralPath (Join-Path $Dir 'avconfig.h')
 
+      - name: Generate Examples/chroma-test.mkv
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # check_packaged_worker.py expects this file, but the source archive does not ship it.
+          # Same content as the unit test: green 64x64 background, red 24x24 square in the centre.
+          $Inputs = Get-Content -LiteralPath "$env:MI_DEV_DIR/BUILD_INPUTS.json" -Raw | ConvertFrom-Json
+          $Ffmpeg = Join-Path $Inputs.ffmpeg_dir 'ffmpeg.exe'
+          if (-not (Test-Path -LiteralPath $Ffmpeg -PathType Leaf)) { throw "ffmpeg.exe not found: $Ffmpeg" }
+          $Examples = Join-Path $env:SOURCE_ROOT 'Examples'
+          New-Item -ItemType Directory -Path $Examples -Force | Out-Null
+          $Out = Join-Path $Examples 'chroma-test.mkv'
+          & $Ffmpeg -nostdin -y -v error -f lavfi -i 'color=c=0x00ff00:s=64x64:r=10' `
+              -vf 'drawbox=x=20:y=20:w=24:h=24:color=0xff0000:t=fill' `
+              -t 0.5 -c:v ffv1 -pix_fmt yuv444p $Out
+          if ($LASTEXITCODE -ne 0) { throw "ffmpeg failed ($LASTEXITCODE)" }
+          if (-not (Test-Path -LiteralPath $Out -PathType Leaf)) { throw 'chroma-test.mkv was not created' }
+          Get-Item -LiteralPath $Out | Format-List Name, Length
+
       - name: Save compiled Qt cache
         if: steps.qt-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
