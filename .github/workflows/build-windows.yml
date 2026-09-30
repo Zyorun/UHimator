@@ -64,7 +64,7 @@ jobs:
           -y
 
 
-        Write-Host "Installing xz using MSYS2..."
+        Write-Host "Installing xz..."
 
 
         C:\tools\msys64\usr\bin\bash.exe -lc `
@@ -72,7 +72,7 @@ jobs:
 
 
 
-        Write-Host "Searching xz.exe..."
+        Write-Host "Finding xz.exe..."
 
 
         $xz = Get-ChildItem `
@@ -99,15 +99,22 @@ jobs:
 
 
 
-        echo $xz.Directory.FullName | Out-File `
-          -FilePath $env:GITHUB_PATH `
-          -Append
+        Copy-Item `
+          $xz.FullName `
+          "C:\Windows\System32\xz.exe" `
+          -Force
 
 
 
-        Write-Host "Testing xz..."
+        Write-Host "Checking Windows tar..."
 
-        & $xz.FullName --version
+        tar --version
+
+
+
+        Write-Host "Checking xz..."
+
+        xz --version
 
 
 
@@ -176,53 +183,31 @@ jobs:
       shell: powershell
       run: |
 
-
         if (Test-Path ".\Build-Windows.ps1") {
-
 
           powershell `
             -ExecutionPolicy Bypass `
             -File ".\Build-Windows.ps1"
 
-
         }
 
         elseif (Test-Path ".\build.ps1") {
-
 
           powershell `
             -ExecutionPolicy Bypass `
             -File ".\build.ps1"
 
-
         }
 
         elseif (Test-Path ".\build.bat") {
 
-
           cmd /c build.bat
-
 
         }
 
         else {
 
-
           Write-Error "Build script not found"
-
-
-          Get-ChildItem `
-            -Recurse `
-            -File `
-            | Where-Object {
-
-                $_.Extension -eq ".ps1" `
-                -or $_.Extension -eq ".bat" `
-                -or $_.Extension -eq ".cmd"
-
-            } `
-            | Select-Object FullName
-
 
           exit 1
 
