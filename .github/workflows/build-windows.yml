@@ -41,6 +41,24 @@ jobs:
               'Using Prepare-WindowsDependencies.ps1 from the repository root.'
           }
 
+      - name: Drop obsolete gravity test from build script
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Gravity was removed (physics now uses the HCl PHYSICS panel) and Tests/gravity_test.cpp
+          # is gone, but Build-Windows.ps1 still compiles and runs it.
+          $Script = Join-Path $env:SOURCE_ROOT 'Scripts/Build-Windows.ps1'
+          $Test = Join-Path $env:SOURCE_ROOT 'Tests/gravity_test.cpp'
+          if (Test-Path -LiteralPath $Test -PathType Leaf) { 'gravity_test.cpp exists; build script left unchanged.'; return }
+          $Text = [System.IO.File]::ReadAllText($Script)
+          $Block = '(?ms)^\$GravityExe = .*?^Run \$GravityExe @\(\)\r?\n'
+          $Flag = '(?m)^[ \t]*gravity_msvc_test_passed = \$true\r?\n'
+          if ($Text -notmatch $Block) { throw 'Gravity test block not found in Build-Windows.ps1; update this step.' }
+          $Text = [regex]::Replace($Text, $Block, '')
+          $Text = [regex]::Replace($Text, $Flag, '')
+          if ($Text -match 'gravity_test') { throw 'Gravity references remain in Build-Windows.ps1.' }
+          [System.IO.File]::WriteAllText($Script, $Text, (New-Object System.Text.UTF8Encoding($false)))
+          'Removed gravity test from Build-Windows.ps1.'
+
       - name: Set up Python 3.11 x64
         uses: actions/setup-python@v5
         with:
