@@ -48,7 +48,7 @@ jobs:
 
 
     # ==========================================
-    # INSTALL BUILD TOOLS
+    # INSTALL TOOLS
     # ==========================================
     - name: Install tools
       shell: powershell
@@ -60,62 +60,25 @@ jobs:
           cmake `
           ninja `
           7zip `
+          xz `
           -y
 
 
-        Write-Host "Installing xz..."
+        refreshenv
 
 
-        Invoke-WebRequest `
-          -Uri "https://github.com/madler/xz/releases/download/v5.8.1/xz-5.8.1-windows-x86_64.zip" `
-          -OutFile "xz.zip"
+        Write-Host "Checking tools..."
 
 
-        Expand-Archive `
-          xz.zip `
-          -DestinationPath "C:\xz" `
-          -Force
+        git --version
 
+        cmake --version
 
-        Get-ChildItem `
-          C:\xz `
-          -Recurse
+        ninja --version
 
+        7z
 
-
-    # ==========================================
-    # ADD XZ TO PATH
-    # ==========================================
-    - name: Setup xz path
-      shell: powershell
-      run: |
-
-        $xz = Get-ChildItem `
-          C:\xz `
-          -Recurse `
-          -Filter xz.exe `
-          | Select-Object -First 1
-
-
-        if ($null -eq $xz) {
-
-          Write-Error "xz.exe not found"
-
-          exit 1
-
-        }
-
-
-        Write-Host "Found xz:"
-        Write-Host $xz.FullName
-
-
-        echo $xz.Directory.FullName | Out-File `
-          -FilePath $env:GITHUB_PATH `
-          -Append
-
-
-        & $xz.FullName --version
+        xz --version
 
 
 
@@ -155,13 +118,13 @@ jobs:
 
 
     # ==========================================
-    # FIND BUILD FILE
+    # FIND BUILD SCRIPT
     # ==========================================
-    - name: Find build script
+    - name: Find build scripts
       shell: powershell
       run: |
 
-        Write-Host "Searching build scripts..."
+        Write-Host "Searching build files..."
 
 
         Get-ChildItem `
@@ -172,7 +135,7 @@ jobs:
               $_.Name -match "build|compile|make"
 
           } `
-          | Select FullName
+          | Select-Object FullName
 
 
 
@@ -194,6 +157,7 @@ jobs:
 
         }
 
+
         elseif (Test-Path ".\build.ps1") {
 
 
@@ -204,6 +168,7 @@ jobs:
 
         }
 
+
         elseif (Test-Path ".\build.bat") {
 
 
@@ -212,10 +177,11 @@ jobs:
 
         }
 
+
         else {
 
 
-          Write-Host "No build script found"
+          Write-Host "Build script not found"
 
 
           Get-ChildItem `
@@ -228,7 +194,7 @@ jobs:
                 -or $_.Extension -eq ".cmd"
 
             } `
-            | Select FullName
+            | Select-Object FullName
 
 
           exit 1
@@ -244,7 +210,10 @@ jobs:
       shell: powershell
       run: |
 
-        mkdir release
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path release
 
 
         Get-ChildItem `
