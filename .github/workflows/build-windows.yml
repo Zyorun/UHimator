@@ -36,6 +36,13 @@ jobs:
           python restore_source.py --destination work
           if ($LASTEXITCODE -ne 0) { throw 'Source verification failed. Check that all three parts are uploaded.' }
 
+      - name: Apply dependency script fix
+        run: |
+          if (Test-Path -LiteralPath Prepare-WindowsDependencies.ps1) {
+              Copy-Item -LiteralPath Prepare-WindowsDependencies.ps1 -Destination "$env:SOURCE_ROOT/Scripts/Prepare-WindowsDependencies.ps1" -Force
+              'Using Prepare-WindowsDependencies.ps1 from the repository root.'
+          }
+
       - name: Set up Python 3.11 x64
         uses: actions/setup-python@v5
         with:
