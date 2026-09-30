@@ -57,10 +57,46 @@ function Get-Package([string]$Name, [string[]]$Uri, [string]$Sha256 = '') {
     return $Destination
 }
 
+# tar.exe on the runner can resolve to a different tar (Git/MSYS) and hang on .tar.xz, so 7-Zip does the extraction.
+function Find-SevenZip {
+    foreach ($Candidate in @('C:\Program Files\7-Zip\7z.exe','C:\Program Files (x86)\7-Zip\7z.exe')) {
+        if (Test-Path -LiteralPath $Candidate -PathType Leaf) { return $Candidate }
+    }
+    $Found = Get-Command '7z.exe' -ErrorAction SilentlyContinue
+    if ($Found) { return $Found.Source }
+    return $null
+}
+
+function Expand-Archive7z([string]$Archive, [string]$Destination) {
+    $SevenZip = Find-SevenZip
+    Write-Host "Extracting $(Split-Path -Leaf $Archive) ..."
+    if ($SevenZip) {
+        if ($Archive -match '\.tar\.(xz|gz|bz2)$') {
+            $Unpack = Join-Path $Downloads ('unpack-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $Unpack -Force | Out-Null
+            & $SevenZip x -y -bso0 -bsp0 "-o$Unpack" $Archive
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip failed to decompress $Archive ($LASTEXITCODE)" }
+            $Tar = Get-ChildItem -LiteralPath $Unpack -Filter '*.tar' -File | Select-Object -First 1
+            if (-not $Tar) { throw "No .tar found after decompressing $Archive" }
+            & $SevenZip x -y -bso0 -bsp0 "-o$Destination" $Tar.FullName
+            $Code = $LASTEXITCODE
+            Remove-Item -LiteralPath $Unpack -Recurse -Force -ErrorAction SilentlyContinue
+            if ($Code -ne 0) { throw "7-Zip failed to extract $Archive ($Code)" }
+        } else {
+            & $SevenZip x -y -bso0 -bsp0 "-o$Destination" $Archive
+            if ($LASTEXITCODE -ne 0) { throw "7-Zip failed to extract $Archive ($LASTEXITCODE)" }
+        }
+    } else {
+        Write-Host '7-Zip not found; falling back to the Windows tar.'
+        Invoke-Native (Join-Path $env:SystemRoot 'System32\tar.exe') @('-xf',$Archive,'-C',$Destination)
+    }
+    Write-Host "Extracted $(Split-Path -Leaf $Archive)"
+}
+
 function Expand-Package([string]$Archive, [string]$Destination, [string]$RequiredFile) {
     if (Test-Path -LiteralPath (Join-Path $Destination $RequiredFile) -PathType Leaf) { return }
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-    Invoke-Native 'tar.exe' @('-xf',$Archive,'-C',$Destination)
+    Expand-Archive7z $Archive $Destination
     if (-not (Test-Path -LiteralPath (Join-Path $Destination $RequiredFile) -PathType Leaf)) {
         throw "Unexpected archive structure: $Archive; missing $RequiredFile"
     }
@@ -107,7 +143,7 @@ $QtMarker = Join-Path $QtInstall 'MI_CUSTOM_QT_COMPLETE.json'
 if (-not (Test-Path -LiteralPath $QtMarker)) {
     # The .zip's root name is verified after extraction instead of assumed.
     New-Item -ItemType Directory -Path $QtRoot -Force | Out-Null
-    Invoke-Native 'tar.exe' @('-xf',$QtArchive,'-C',$QtRoot)
+    Expand-Archive7z $QtArchive $QtRoot
     $Candidates = @(Get-ChildItem -LiteralPath $QtRoot -Directory | Where-Object {
         $_.Name -like 'qtbase-everywhere*5.15.9' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'configure.bat'))
     })
