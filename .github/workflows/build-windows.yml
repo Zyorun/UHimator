@@ -11,110 +11,199 @@ on:
   pull_request:
   workflow_dispatch:
 
+
+# ==========================================
+# BUILD JOB
+# ==========================================
 jobs:
+
   build-windows:
-    name: Build Windows Release
+
+    name: Build UHimator
+
     runs-on: windows-2022
+
     timeout-minutes: 180
+
 
     steps:
 
+
     # ==========================================
-    # CHECKOUT
+    # CHECKOUT SOURCE
     # ==========================================
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         submodules: recursive
 
+
+
     # ==========================================
-    # SETUP COMPILER
+    # SETUP VISUAL STUDIO
     # ==========================================
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
+
+
     # ==========================================
     # INSTALL TOOLS
     # ==========================================
-    - name: Install dependencies
+    - name: Install tools
       shell: powershell
       run: |
-        choco install cmake ninja 7zip python wget -y
-        git config --global core.autocrlf false
+
+        choco install `
+          cmake `
+          ninja `
+          7zip `
+          python `
+          -y
+
 
     # ==========================================
-    # CACHE
+    # CHECK PROJECT FILE
     # ==========================================
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          deps
-          build
-          C:\Qt
-        key: windows-uhimator-${{ hashFiles('**/*.cpp','**/*.h','**/*.pro') }}
-
-    # ==========================================
-    # DOWNLOAD LIBZIP
-    # ==========================================
-    - name: Download libzip
+    - name: Detect project
       shell: powershell
-      timeout-minutes: 20
       run: |
+
+        Write-Host "Searching project files..."
+
+        Get-ChildItem -Recurse -Name *.pro
+
+        Get-ChildItem -Recurse -Name CMakeLists.txt
+
+
+
+    # ==========================================
+    # DOWNLOAD DEPENDENCIES
+    # ==========================================
+    - name: Download dependencies
+      shell: powershell
+      timeout-minutes: 30
+      run: |
+
         $ErrorActionPreference="Stop"
 
-        New-Item -ItemType Directory -Force -Path deps
+
+        if (!(Test-Path deps)) {
+            mkdir deps
+        }
+
 
         cd deps
 
-        if (!(Test-Path "libzip-1.9.2.tar.xz")) {
+
+        if (!(Test-Path libzip-1.9.2.tar.xz)) {
+
           Write-Host "Downloading libzip..."
 
           Invoke-WebRequest `
-            -Uri "https://libzip.org/download/libzip-1.9.2.tar.xz" `
-            -OutFile "libzip-1.9.2.tar.xz" `
-            -TimeoutSec 180
+          -Uri "https://libzip.org/download/libzip-1.9.2.tar.xz" `
+          -OutFile "libzip-1.9.2.tar.xz" `
+          -TimeoutSec 180
+
         }
 
+
+
     # ==========================================
-    # EXTRACT
+    # EXTRACT LIBZIP
     # ==========================================
-    - name: Extract libzip
+    - name: Extract dependencies
       shell: powershell
       run: |
+
         cd deps
 
+
         7z x libzip-1.9.2.tar.xz -y
+
         7z x libzip-1.9.2.tar -y
 
+
+
     # ==========================================
-    # CONFIGURE
+    # SETUP QT
     # ==========================================
-    - name: Configure CMake
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+
+        version: 5.15.2
+
+        arch: win64_msvc2019_64
+
+        cache: true
+
+
+
+    # ==========================================
+    # BUILD QT PROJECT
+    # ==========================================
+    - name: Build UHimator
       shell: powershell
       run: |
-        mkdir build
-        cd build
 
-        cmake .. `
-          -G Ninja `
-          -DCMAKE_BUILD_TYPE=Release
+        Write-Host "Finding .pro file..."
+
+        $project = Get-ChildItem `
+        -Recurse `
+        -Filter *.pro |
+        Select-Object -First 1
+
+
+        if ($null -eq $project) {
+
+          Write-Error "No Qt project (.pro) found"
+
+          exit 1
+
+        }
+
+
+        Write-Host "Building:"
+        Write-Host $project.FullName
+
+
+        cd $project.Directory
+
+
+        qmake $project.Name
+
+
+        nmake
+
+
 
     # ==========================================
-    # BUILD
+    # PACKAGE
     # ==========================================
-    - name: Compile UHimator
+    - name: Package build
       shell: powershell
-      timeout-minutes: 90
       run: |
-        cd build
-        ninja -v
+
+        mkdir release
+
+
+        Get-ChildItem -Recurse `
+        -Include *.exe |
+        Copy-Item `
+        -Destination release `
+        -Force
+
+
 
     # ==========================================
-    # UPLOAD
+    # UPLOAD RESULT
     # ==========================================
     - name: Upload artifact
       uses: actions/upload-artifact@v4
+
       with:
+
         name: UHimator-Windows
-        path: build/
+
+        path: release/
