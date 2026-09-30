@@ -1,241 +1,120 @@
 name: Build UHimator Windows
 
+# ==========================================
+# WORKFLOW TRIGGER
+# ==========================================
 on:
   push:
     branches:
       - main
       - master
-
   pull_request:
-
   workflow_dispatch:
-
 
 jobs:
   build-windows:
-
     name: Build Windows Release
-
     runs-on: windows-2022
-
     timeout-minutes: 180
-
 
     steps:
 
-    # -----------------------------
-    # Checkout source
-    # -----------------------------
+    # ==========================================
+    # CHECKOUT
+    # ==========================================
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         submodules: recursive
 
-
-    # -----------------------------
-    # Setup Visual Studio
-    # -----------------------------
+    # ==========================================
+    # SETUP COMPILER
+    # ==========================================
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
-
-    # -----------------------------
-    # Install tools
-    # -----------------------------
-    - name: Install build tools
+    # ==========================================
+    # INSTALL TOOLS
+    # ==========================================
+    - name: Install dependencies
       shell: powershell
       run: |
-
-        choco install `
-          cmake `
-          ninja `
-          7zip `
-          python `
-          wget `
-          -y
-
-
+        choco install cmake ninja 7zip python wget -y
         git config --global core.autocrlf false
 
-
-    # -----------------------------
-    # Cache dependencies
-    # -----------------------------
+    # ==========================================
+    # CACHE
+    # ==========================================
     - name: Cache dependencies
       uses: actions/cache@v4
       with:
-
         path: |
-
           deps
-
           build
-
           C:\Qt
+        key: windows-uhimator-${{ hashFiles('**/*.cpp','**/*.h','**/*.pro') }}
 
-
-        key:
-
-          windows-uHimator-${{ hashFiles('**/*.cpp','**/*.h','**/*.pro','**/*.pri') }}
-
-
-
-    # -----------------------------
-    # Download libzip
-    # -----------------------------
-    - name: Download libzip dependency
+    # ==========================================
+    # DOWNLOAD LIBZIP
+    # ==========================================
+    - name: Download libzip
       shell: powershell
       timeout-minutes: 20
       run: |
-
-
         $ErrorActionPreference="Stop"
 
-
-        if (!(Test-Path "deps")) {
-
-            mkdir deps
-
-        }
-
+        New-Item -ItemType Directory -Force -Path deps
 
         cd deps
-
 
         if (!(Test-Path "libzip-1.9.2.tar.xz")) {
+          Write-Host "Downloading libzip..."
 
-
-            Write-Host "Downloading libzip..."
-
-
-            Invoke-WebRequest `
-
+          Invoke-WebRequest `
             -Uri "https://libzip.org/download/libzip-1.9.2.tar.xz" `
-
             -OutFile "libzip-1.9.2.tar.xz" `
-
             -TimeoutSec 180
-
-
         }
 
-
-        Write-Host "Download finished"
-
-
-
-    # -----------------------------
-    # Extract dependencies
-    # -----------------------------
-    - name: Extract dependencies
+    # ==========================================
+    # EXTRACT
+    # ==========================================
+    - name: Extract libzip
       shell: powershell
-      timeout-minutes: 20
       run: |
-
-
         cd deps
 
+        7z x libzip-1.9.2.tar.xz -y
+        7z x libzip-1.9.2.tar -y
 
-        if (!(Test-Path "libzip-1.9.2")) {
-
-
-            Write-Host "Extracting libzip..."
-
-
-            7z x libzip-1.9.2.tar.xz -y
-
-
-            7z x libzip-1.9.2.tar -y
-
-
-            Rename-Item `
-            libzip-1.9.2 `
-            libzip-1.9.2 `
-            -ErrorAction SilentlyContinue
-
-
-        }
-
-
-
-    # -----------------------------
-    # Prepare build folder
-    # -----------------------------
+    # ==========================================
+    # CONFIGURE
+    # ==========================================
     - name: Configure CMake
       shell: powershell
       run: |
-
-
-        if (!(Test-Path build)) {
-
-            mkdir build
-
-        }
-
-
+        mkdir build
         cd build
 
-
-
         cmake .. `
+          -G Ninja `
+          -DCMAKE_BUILD_TYPE=Release
 
-        -G Ninja `
-
-        -DCMAKE_BUILD_TYPE=Release `
-
-        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-
-
-
-    # -----------------------------
-    # Build
-    # -----------------------------
+    # ==========================================
+    # BUILD
+    # ==========================================
     - name: Compile UHimator
       shell: powershell
       timeout-minutes: 90
       run: |
-
-
         cd build
-
-
         ninja -v
 
-
-
-    # -----------------------------
-    # Package
-    # -----------------------------
-    - name: Create release package
-      shell: powershell
-      run: |
-
-
-        mkdir release
-
-
-        Copy-Item `
-
-        build\* `
-
-        release\ `
-
-        -Recurse `
-
-        -Force
-
-
-
-    # -----------------------------
-    # Upload result
-    # -----------------------------
-    - name: Upload UHimator build
+    # ==========================================
+    # UPLOAD
+    # ==========================================
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
-
       with:
-
         name: UHimator-Windows
-
-        path:
-
-          release/
+        path: build/
