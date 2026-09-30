@@ -1,154 +1,241 @@
-# After uploading, rename THIS FILE to .github/workflows/build-windows.yml.
-# The source parts, source-payload.json and restore_source.py stay at repo root.
-name: Build Mine-imator Custom + HCl Windows
+name: Build UHimator Windows
 
 on:
+  push:
+    branches:
+      - main
+      - master
+
+  pull_request:
+
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-concurrency:
-  group: mineimator-windows-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
-  windows:
+  build-windows:
+
+    name: Build Windows Release
+
     runs-on: windows-2022
-    timeout-minutes: 330
-    defaults:
-      run:
-        shell: pwsh
-    env:
-      SOURCE_ROOT: ${{ github.workspace }}/work/Mine-imator-Custom-HCL
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+    timeout-minutes: 180
+
+
     steps:
-      - name: Set dependency folder
-        run: |
-          "MI_DEV_DIR=$env:RUNNER_TEMP/mi-custom-dev" | Add-Content -Path $env:GITHUB_ENV
 
-      - name: Download repository
-        uses: actions/checkout@v6
+    # -----------------------------
+    # Checkout source
+    # -----------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-      - name: Verify uploads and restore source
-        run: |
-          python restore_source.py --destination work
-          if ($LASTEXITCODE -ne 0) { throw 'Source verification failed. Check that all three parts are uploaded.' }
 
-      - name: Apply dependency script fix
-        run: |
-          if (Test-Path -LiteralPath Prepare-WindowsDependencies.ps1) {
-              Copy-Item -LiteralPath Prepare-WindowsDependencies.ps1 -Destination "$env:SOURCE_ROOT/Scripts/Prepare-WindowsDependencies.ps1" -Force
-              'Using Prepare-WindowsDependencies.ps1 from the repository root.'
-          }
+    # -----------------------------
+    # Setup Visual Studio
+    # -----------------------------
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Set up Python 3.11 x64
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          architecture: x64
 
-      - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+    # -----------------------------
+    # Install tools
+    # -----------------------------
+    - name: Install build tools
+      shell: powershell
+      run: |
 
-      - name: Check PowerShell scripts and generate C++
-        run: |
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Path logs -Force | Out-Null
-          Get-ChildItem -LiteralPath "$env:SOURCE_ROOT/Scripts" -Filter '*.ps1' | ForEach-Object {
-              $Tokens = $null
-              $Errors = $null
-              [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$Errors) | Out-Null
-              if ($Errors.Count) { throw ($Errors | Out-String) }
-          }
-          & "$env:SOURCE_ROOT/Scripts/Generate-Cpp.ps1" -LogPath "$env:GITHUB_WORKSPACE/logs/cppgen.log"
+        choco install `
+          cmake `
+          ninja `
+          7zip `
+          python `
+          wget `
+          -y
 
-      - name: Restore compiled Qt cache
-        id: qt-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ runner.temp }}/mi-custom-dev/Qt/5.15.9/build
-          key: qt5159-hcl-v2-${{ hashFiles('work/**/Scripts/Prepare-WindowsDependencies.ps1') }}
 
-      - name: Download dependencies and build static Qt
-        id: dependencies
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Start-Transcript -Path "$env:GITHUB_WORKSPACE/logs/dependencies.log"
-          try {
-              . "$env:SOURCE_ROOT/Scripts/Enter-WindowsBuild.ps1"
-              & "$env:SOURCE_ROOT/Scripts/Prepare-WindowsDependencies.ps1" -DevDir $env:MI_DEV_DIR -Threads 2
-          } finally { Stop-Transcript }
+        git config --global core.autocrlf false
 
-      - name: Save compiled Qt cache
-        if: steps.qt-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/mi-custom-dev/Qt/5.15.9/build
-          key: ${{ steps.qt-cache.outputs.cache-primary-key }}
 
-      - name: Build Windows application, package worker and test
-        id: build
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Start-Transcript -Path "$env:GITHUB_WORKSPACE/logs/build.log"
-          try {
-              . "$env:SOURCE_ROOT/Scripts/Enter-WindowsBuild.ps1"
-              $Inputs = Get-Content -LiteralPath "$env:MI_DEV_DIR/BUILD_INPUTS.json" -Raw | ConvertFrom-Json
-              & "$env:SOURCE_ROOT/Scripts/Build-Windows.ps1" `
-                  -DevDir $Inputs.dev_dir -Python (Get-Command python.exe).Source `
-                  -FfmpegDir $Inputs.ffmpeg_dir -PoseModelPath $Inputs.pose_model -Parallel 2
-          } finally { Stop-Transcript }
+    # -----------------------------
+    # Cache dependencies
+    # -----------------------------
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
 
-      - name: Upload Windows candidate ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mine-imator-Custom-HCL-Win64-Candidate
-          path: ${{ steps.build.outputs.candidate_zip }}
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
+        path: |
 
-      - name: Upload exact source archive
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mine-imator-Custom-Source
-          path: work/source.zip
-          if-no-files-found: ignore
-          retention-days: 14
-          compression-level: 0
+          deps
 
-      - name: Upload diagnostic logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mine-imator-build-logs
-          path: |
-            logs/
-            work/**/Builds/**/*.log
-            work/**/Builds/**/WORKER_TEST_RESULTS.json
-            work/**/Builds/**/BUILD_STATUS.json
-            work/**/CppGen/**/Logs/
-            work/**/CppProject/Generated/Scripts.hpp
-            ${{ runner.temp }}/mi-custom-dev/*.log
-            ${{ runner.temp }}/mi-custom-dev/DOWNLOADS.json
-            ${{ runner.temp }}/mi-custom-dev/Qt/5.15.9/compile/config.log
-            ${{ runner.temp }}/mi-custom-dev/Qt/5.15.9/compile/config.summary
-          if-no-files-found: warn
-          retention-days: 14
+          build
 
-      - name: Report status
-        if: always()
-        env:
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
-        run: |
-          if ($env:BUILD_OUTCOME -eq 'success') {
-              'Build and worker tests completed. Download Mine-imator-Custom-HCL-Win64-Candidate under Artifacts.' | Add-Content $env:GITHUB_STEP_SUMMARY
-              'This is a candidate. Native GUI, webcam hardware and real-world FBX still need testing on your Windows PC.' | Add-Content $env:GITHUB_STEP_SUMMARY
-          } else {
-              'No verified candidate is available. Download Mine-imator-build-logs and inspect the first failed step.' | Add-Content $env:GITHUB_STEP_SUMMARY
-          }
+          C:\Qt
+
+
+        key:
+
+          windows-uHimator-${{ hashFiles('**/*.cpp','**/*.h','**/*.pro','**/*.pri') }}
+
+
+
+    # -----------------------------
+    # Download libzip
+    # -----------------------------
+    - name: Download libzip dependency
+      shell: powershell
+      timeout-minutes: 20
+      run: |
+
+
+        $ErrorActionPreference="Stop"
+
+
+        if (!(Test-Path "deps")) {
+
+            mkdir deps
+
+        }
+
+
+        cd deps
+
+
+        if (!(Test-Path "libzip-1.9.2.tar.xz")) {
+
+
+            Write-Host "Downloading libzip..."
+
+
+            Invoke-WebRequest `
+
+            -Uri "https://libzip.org/download/libzip-1.9.2.tar.xz" `
+
+            -OutFile "libzip-1.9.2.tar.xz" `
+
+            -TimeoutSec 180
+
+
+        }
+
+
+        Write-Host "Download finished"
+
+
+
+    # -----------------------------
+    # Extract dependencies
+    # -----------------------------
+    - name: Extract dependencies
+      shell: powershell
+      timeout-minutes: 20
+      run: |
+
+
+        cd deps
+
+
+        if (!(Test-Path "libzip-1.9.2")) {
+
+
+            Write-Host "Extracting libzip..."
+
+
+            7z x libzip-1.9.2.tar.xz -y
+
+
+            7z x libzip-1.9.2.tar -y
+
+
+            Rename-Item `
+            libzip-1.9.2 `
+            libzip-1.9.2 `
+            -ErrorAction SilentlyContinue
+
+
+        }
+
+
+
+    # -----------------------------
+    # Prepare build folder
+    # -----------------------------
+    - name: Configure CMake
+      shell: powershell
+      run: |
+
+
+        if (!(Test-Path build)) {
+
+            mkdir build
+
+        }
+
+
+        cd build
+
+
+
+        cmake .. `
+
+        -G Ninja `
+
+        -DCMAKE_BUILD_TYPE=Release `
+
+        -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+
+
+
+    # -----------------------------
+    # Build
+    # -----------------------------
+    - name: Compile UHimator
+      shell: powershell
+      timeout-minutes: 90
+      run: |
+
+
+        cd build
+
+
+        ninja -v
+
+
+
+    # -----------------------------
+    # Package
+    # -----------------------------
+    - name: Create release package
+      shell: powershell
+      run: |
+
+
+        mkdir release
+
+
+        Copy-Item `
+
+        build\* `
+
+        release\ `
+
+        -Recurse `
+
+        -Force
+
+
+
+    # -----------------------------
+    # Upload result
+    # -----------------------------
+    - name: Upload UHimator build
+      uses: actions/upload-artifact@v4
+
+      with:
+
+        name: UHimator-Windows
+
+        path:
+
+          release/
