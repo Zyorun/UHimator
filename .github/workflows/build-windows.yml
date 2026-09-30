@@ -21,12 +21,15 @@ jobs:
         shell: pwsh
     env:
       SOURCE_ROOT: ${{ github.workspace }}/work/Mine-imator-Custom-HCL
-      MI_DEV_DIR: ${{ runner.temp }}/mi-custom-dev
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
+      - name: Set dependency folder
+        run: |
+          "MI_DEV_DIR=$env:RUNNER_TEMP/mi-custom-dev" | Add-Content -Path $env:GITHUB_ENV
+
       - name: Download repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Verify uploads and restore source
         run: |
@@ -34,13 +37,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Source verification failed. Check that all three parts are uploaded.' }
 
       - name: Set up Python 3.11 x64
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           architecture: x64
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
@@ -58,7 +61,7 @@ jobs:
 
       - name: Restore compiled Qt cache
         id: qt-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/mi-custom-dev/Qt/5.15.9/build
           key: qt5159-hcl-v2-${{ hashFiles('work/**/Scripts/Prepare-WindowsDependencies.ps1') }}
@@ -75,7 +78,7 @@ jobs:
 
       - name: Save compiled Qt cache
         if: steps.qt-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/mi-custom-dev/Qt/5.15.9/build
           key: ${{ steps.qt-cache.outputs.cache-primary-key }}
@@ -94,7 +97,7 @@ jobs:
           } finally { Stop-Transcript }
 
       - name: Upload Windows candidate ZIP
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: Mine-imator-Custom-HCL-Win64-Candidate
           path: ${{ steps.build.outputs.candidate_zip }}
@@ -104,7 +107,7 @@ jobs:
 
       - name: Upload exact source archive
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: Mine-imator-Custom-Source
           path: work/source.zip
@@ -114,7 +117,7 @@ jobs:
 
       - name: Upload diagnostic logs
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: Mine-imator-build-logs
           path: |
