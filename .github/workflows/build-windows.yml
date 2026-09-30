@@ -60,15 +60,44 @@ jobs:
           cmake `
           ninja `
           7zip `
-          xz `
+          msys2 `
           -y
 
 
-        refreshenv
+        Write-Host "Searching xz.exe..."
 
 
-        Write-Host "Checking tools..."
+        $xz = Get-ChildItem `
+          "C:\tools\msys64" `
+          -Recurse `
+          -Filter "xz.exe" `
+          -ErrorAction SilentlyContinue `
+          | Select-Object -First 1
 
+
+
+        if ($null -eq $xz) {
+
+          Write-Error "xz.exe not found"
+
+          exit 1
+
+        }
+
+
+
+        Write-Host "xz found:"
+        Write-Host $xz.FullName
+
+
+
+        echo $xz.Directory.FullName | Out-File `
+          -FilePath $env:GITHUB_PATH `
+          -Append
+
+
+
+        Write-Host "Checking installed tools..."
 
         git --version
 
@@ -93,6 +122,7 @@ jobs:
 
 
         $DevDir = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
+
 
 
         Write-Host "Developer directory:"
@@ -124,7 +154,7 @@ jobs:
       shell: powershell
       run: |
 
-        Write-Host "Searching build files..."
+        Write-Host "Searching build scripts..."
 
 
         Get-ChildItem `
@@ -157,7 +187,6 @@ jobs:
 
         }
 
-
         elseif (Test-Path ".\build.ps1") {
 
 
@@ -168,7 +197,6 @@ jobs:
 
         }
 
-
         elseif (Test-Path ".\build.bat") {
 
 
@@ -176,7 +204,6 @@ jobs:
 
 
         }
-
 
         else {
 
